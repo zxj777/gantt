@@ -1,5 +1,13 @@
 <template>
   <div :style="{ textAlign: 'left', height: `${height}px` }">
+    <!-- <div
+      ref="test"
+      style="width: 30px; height: 30px; background: #000"
+      @mousedown="handleBarDown2($event)"
+      @mousemove="handleBarMove2"
+      @mouseup="handleBarUp2"
+    ></div> -->
+
     <svg class="gantt-wrapper" :width="ganttLayout.width" xmlns="http://www.w3.org/2000/svg">
       <g class="gantt-header">
         <svg
@@ -47,26 +55,7 @@
           style="stroke: #e8eaec; stroke-width: 1"
         />
       </g>
-      <g class="gantt-lines">
-        <line
-          :x1="line.x"
-          :y1="ganttLayout.headerHeight"
-          :x2="line.x"
-          :y2="ganttLayout.height"
-          v-for="(line, index) in verticalDateLines"
-          :key="index"
-          style="stroke: #dee6ee"
-        />
-        <line
-          :x1="line.x"
-          :y1="0"
-          :x2="line.x"
-          :y2="ganttLayout.height"
-          v-for="(line, index) in verticalDateGroupLines"
-          :key="'group' + index"
-          style="stroke: #dee6ee; stroke-width: 2"
-        />
-      </g>
+
       <g class="gantt-body">
         <rect
           v-for="(item, index) in tasks"
@@ -77,37 +66,88 @@
           :height="ganttLayout.rowHeight"
           fill="#fff"
         ></rect>
-        <rect
+        <g class="gantt-lines">
+          <line
+            :x1="line.x"
+            :y1="ganttLayout.headerHeight"
+            :x2="line.x"
+            :y2="ganttLayout.height"
+            v-for="(line, index) in verticalDateLines"
+            :key="index"
+            style="stroke: #dee6ee"
+          />
+          <line
+            :x1="line.x"
+            :y1="0"
+            :x2="line.x"
+            :y2="ganttLayout.height"
+            v-for="(line, index) in verticalDateGroupLines"
+            :key="'group' + index"
+            style="stroke: #dee6ee; stroke-width: 2"
+          />
+        </g>
+        <svg
+          class="gantt-task-bar-wrapper"
           v-for="(bar, index) in taskBars"
           :key="'bar' + index"
           :x="bar.x"
           :y="bar.y"
-          :width="bar.width"
-          :height="bar.height"
-        />
+        >
+          <rect
+            :width="bar.width"
+            :height="bar.height"
+            fill="#b0bac5"
+            rx="5"
+            ry="5"
+            class="gantt-task-bar"
+            @mousedown="handleBarDown($event, index)"
+            @mousemove="handleBarMove"
+            @mouseup="handleBarUp"
+          />
+          <text :x="bar.width - 30" :y="options.barHeight / 2" class="gantt-bar-text">
+            {{ bar.progress }}%
+          </text>
+          <rect
+            class="gantt-bar-adjust adjust--w"
+            x="0"
+            rx="5"
+            ry="5"
+            fill="rgba(0,0,0,0.2)"
+            width="5"
+            :height="bar.height"
+            @mousedown="handleBarScaleDown($event, index, 'left')"
+            @mousemove="handleBarMove"
+            @mouseup="handleBarUp"
+          />
+          <rect
+            class="gantt-bar-adjust adjust--e"
+            :x="bar.width - 5"
+            rx="5"
+            ry="5"
+            fill="rgba(0,0,0,0.2)"
+            width="5"
+            :height="bar.height"
+            @mousedown="handleBarScaleDown($event, index, 'right')"
+            @mousemove="handleBarMove"
+            @mouseup="handleBarUp"
+          />
+        </svg>
       </g>
     </svg>
   </div>
 </template>
 
 <script>
+/* eslint-disable no-debugger */
+
 import dayjs from 'dayjs'
-// import dayjs from 'dayjs'
 import { mapState } from 'vuex'
+import { EventBus } from '../../event-bus'
 
 const DAY_MAP = ['日', '一', '二', '三', '四', '五', '六']
 
 export default {
   name: 'GanttChart',
-  computed: {
-    ...mapState({
-      allTasks: 'tasks',
-      options: 'options',
-    }),
-    tasks() {
-      return this.allTasks.filter((task) => !task.hide)
-    },
-  },
   props: {
     height: {
       type: Number,
@@ -138,13 +178,45 @@ export default {
       verticalDateLines: [],
       verticalDateGroupLines: [],
       taskBars: [],
+      move: {
+        isMoving: false,
+        task: null,
+        startX: 0,
+      },
+      scale: {
+        isScaling: false,
+        task: null,
+        startX: 0,
+        direction: '',
+      },
     }
+  },
+  computed: {
+    ...mapState({
+      allTasks: 'tasks',
+      options: 'options',
+    }),
+    tasks() {
+      return this.allTasks.filter((task) => !task.hide)
+    },
   },
   watch: {
     ganttDatesGroup() {
       this.computeLayout()
       this.handleTasks()
     },
+  },
+  mounted() {
+    document.addEventListener('mousemove', this.handleBarMove)
+    document.addEventListener('mouseup', this.handleBarUp)
+    document.addEventListener('mousemove', this.handleBarScaleMove)
+    document.addEventListener('mouseup', this.handleBarScaleUp)
+  },
+  beforeDestroy() {
+    document.removeEventListener('mousemove', this.handleBarMove)
+    document.removeEventListener('mouseup', this.handleBarUp)
+    document.removeEventListener('mousemove', this.handleBarScaleMove)
+    document.removeEventListener('mouseup', this.handleBarScaleUp)
   },
   methods: {
     mergeOptions() {},
@@ -156,11 +228,11 @@ export default {
     },
     getBeginDue() {
       for (const task of this.tasks) {
-        if (!this.taskBegin || this.taskBegin < task._begin) {
+        if (!this.taskBegin || task._begin.isBefore(this.taskBegin)) {
           this.taskBegin = task._begin
         }
 
-        if (!this.taskDue || task._due > this.taskDue) {
+        if (!this.taskDue || task._due.isAfter(this.taskDue)) {
           this.taskDue = task._due
         }
       }
@@ -181,6 +253,7 @@ export default {
           year,
           dayLabel: DAY_MAP[s.day()],
           instance: s,
+          time: s.format('YYYY-MM-DD'),
         })
         s = dayjs(s).add(1, 'day')
       }
@@ -296,13 +369,154 @@ export default {
           }
 
           return {
+            id: task.id,
+            originX: x1,
             x: x1,
-            width: x2 - x1 || this.options.columnWidth / 2,
+            originX2: x2,
+            x2,
             y,
+            originWidth: x2 - x1,
+            width: x2 - x1,
             height,
+            originBegin: task.begin,
+            begin: task.begin,
+            originDue: task.due,
+            due: task.due,
+            owner: task.owner,
+            title: task.title,
+            progress: task.progress,
+            status: task.status,
           }
         })
         .filter((taskBar) => !!taskBar)
+    },
+    handleBarDown(e, index) {
+      this.move = {
+        isMoving: true,
+        task: this.taskBars[index],
+        startX: e.pageX,
+      }
+    },
+    handleBarMove(e) {
+      if (!this.move.isMoving) return
+      const deltaX = e.pageX - this.move.startX
+      const bar = this.taskBars.find((bar) => bar.id === this.move.task.id)
+      // const moveX = deltaX / (this.options.columnWidth + this.options.columnGap) *
+      const x = bar.originX + deltaX
+
+      // 可优化
+      for (let i = 0; i < this.ganttDates.length - 1; i++) {
+        if (this.ganttDates[i].x < x && this.ganttDates[i + 1].x >= x) {
+          let d, t
+          if (deltaX >= 0) {
+            d = this.ganttDates[i]
+            t = this.ganttDates[i + 1]
+          } else {
+            d = this.ganttDates[i + 1]
+            t = this.ganttDates[i + 2]
+          }
+          bar.x = d.x
+          bar.begin = t.time
+          bar.due = dayjs(bar.begin)
+            .add(dayjs(bar.originDue) - dayjs(bar.originBegin), 'millisecond')
+            .format('YYYY-MM-DD')
+        }
+      }
+    },
+
+    handleBarUp() {
+      if (!this.move.isMoving) return
+      const { begin, due, id: taskId } = this.move.task
+      EventBus.$emit(
+        'updateTaskTime',
+        {
+          begin,
+          due,
+          taskId,
+        },
+        (error) => {
+          if (!error) {
+            const bar = this.taskBars.find((bar) => bar.id === taskId)
+            bar.originBegin = bar.begin
+            bar.originDue = bar.due
+            bar.originX = bar.x
+          }
+        },
+      )
+
+      this.move = {
+        isMoving: false,
+        task: null,
+        startX: 0,
+      }
+
+      // console.log(index)
+    },
+    handleBarScaleDown(e, index, direction) {
+      this.scale = {
+        isScaling: true,
+        task: this.taskBars[index],
+        startX: e.pageX,
+        direction,
+      }
+    },
+    handleBarScaleMove(e) {
+      if (!this.scale.isScaling) return
+      // const coefficient = this.scale.direction === 'left' ? -1 : 1
+      const deltaX = e.pageX - this.scale.startX
+      // if (deltaX * coefficient <= 0) return
+      const bar = this.taskBars.find((bar) => bar.id === this.scale.task.id)
+      const x = this.scale.direction === 'right' ? bar.originX2 + deltaX : bar.originX + deltaX
+      for (let i = 0; i < this.ganttDates.length - 1; i++) {
+        if (this.ganttDates[i].x < x && this.ganttDates[i + 1].x >= x) {
+          let d, t
+          if (this.scale.direction === 'right') {
+            d = this.ganttDates[i]
+            t = this.ganttDates[i + 1]
+            bar.due = d.time
+            bar.x2 = d.x
+            bar.width = bar.x2 - bar.originX
+          } else {
+            d = this.ganttDates[i + 1]
+            t = this.ganttDates[i + 2]
+
+            bar.x = d.x
+            bar.begin = t.time
+            bar.width = bar.originX - bar.x + bar.originWidth
+          }
+          // bar.due = dayjs(bar.begin)
+          //   .add(dayjs(bar.originDue) - dayjs(bar.originBegin), 'millisecond')
+          //   .format('YYYY-MM-DD')
+        }
+      }
+    },
+    handleBarScaleUp() {
+      if (!this.scale.isScaling) return
+      const { begin, due, id: taskId } = this.scale.task
+      EventBus.$emit(
+        'updateTaskTime',
+        {
+          begin,
+          due,
+          taskId,
+        },
+        (error) => {
+          if (!error) {
+            const bar = this.taskBars.find((bar) => bar.id === taskId)
+            bar.originBegin = bar.begin
+            bar.originDue = bar.due
+            bar.originX2 = bar.x2
+            bar.originX = bar.x
+            bar.originWidth = bar.width
+          }
+        },
+      )
+
+      this.scale = {
+        isScaling: false,
+        task: null,
+        startX: 0,
+      }
     },
     // computeTaskBars() {
     //   this.tasks.for
@@ -322,6 +536,29 @@ export default {
 
   .gantt-header__time-date {
     font-size: 10px;
+  }
+
+  .gantt-body {
+    .gantt-task-bar-wrapper {
+      .gantt-task-bar {
+        cursor: all-scroll;
+      }
+      .gantt-bar-text {
+        font-size: 12px;
+        dominant-baseline: middle;
+        user-select: none;
+      }
+
+      .gantt-bar-adjust {
+        &.adjust--w {
+          cursor: w-resize;
+        }
+
+        &.adjust--e {
+          cursor: e-resize;
+        }
+      }
+    }
   }
 }
 </style>

@@ -11,6 +11,7 @@ import GanttMain from './components/GanttMain.vue'
 import { mapMutations, mapState } from 'vuex'
 import { getColumnConfig } from './config/columns'
 import dayjs from 'dayjs'
+import { EventBus } from './event-bus'
 
 export default {
   components: {
@@ -56,8 +57,16 @@ export default {
       immediate: true,
     },
   },
+  created() {
+    this.startEventListen()
+  },
   methods: {
     ...mapMutations(['setTasks', 'setColumns', 'setViewConfig']),
+    startEventListen() {
+      EventBus.$on('updateTaskTime', (data, cb) => {
+        this.$emit('updateTask', data, cb)
+      })
+    },
     // formatTasks(tasks, expandedKeys, pid = null) {
     //   return tasks.map((task) => {
     //     const r = {}

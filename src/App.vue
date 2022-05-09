@@ -1,6 +1,6 @@
 <template>
   <div id="app">
-    <Gantt :tasks="tasks" :columns="columns"></Gantt>
+    <Gantt :tasks="tasks" :columns="columns" @updateTask="handleUpdateTask"></Gantt>
   </div>
 </template>
 
@@ -91,6 +91,44 @@ export default {
             },
           ],
         },
+        // {
+        //   id: '3',
+        //   title: '需求三',
+        //   owner: '蛋包',
+        //   begin: '2019-12-01',
+        //   due: '2020-01-03',
+        //   progress: 0,
+        //   type: 'story',
+        //   children: [
+        //     {
+        //       id: '3001',
+        //       title: '任务一',
+        //       owner: '蛋包',
+        //       begin: '2019-12-10',
+        //       due: '2019-12-20',
+        //       progress: 0,
+        //       type: 'task',
+        //     },
+        //     {
+        //       id: '3002',
+        //       title: '任务二',
+        //       owner: '蛋包',
+        //       begin: '2019-12-15',
+        //       due: '2019-12-28',
+        //       progress: 0,
+        //       type: 'task',
+        //     },
+        //     {
+        //       id: '3003',
+        //       title: '任务三',
+        //       owner: '蛋包',
+        //       begin: '2020-01-01',
+        //       due: '2020-01-01',
+        //       progress: 0,
+        //       type: 'task',
+        //     },
+        //   ],
+        // },
       ],
       columns: [
         {
@@ -111,6 +149,29 @@ export default {
         },
       ],
     }
+  },
+  methods: {
+    handleUpdateTask(data, cb) {
+      const task = this.findTask(this.tasks, data.taskId)
+      task.begin = data.begin
+      task.due = data.due
+      cb && cb(null)
+      // this.tasks.find((task) => {})
+    },
+    findTask(tasks, id) {
+      for (const task of tasks) {
+        if (task.id === id) {
+          return task
+        } else {
+          if (task.children) {
+            const r = this.findTask(task.children, id)
+            if (r) {
+              return r
+            }
+          }
+        }
+      }
+    },
   },
 }
 </script>

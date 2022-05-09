@@ -14,6 +14,7 @@ const options = {
       columnGap: 1,
       headerHeight: 60,
       barPadding: 3,
+      barHeight: 30,
     },
     viewConfig: {
       expandedKeys: [],
